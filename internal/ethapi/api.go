@@ -1511,17 +1511,47 @@ func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, has
 	return nil, nil
 }
 
-func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]common.Address, error) {
+// AccountTokenBalance represent the account token balance result
+type AccountTokenBalanceResult struct {
+	Contract common.Address `json:"contract"`
+	Balance  string         `json:"balance"`
+}
+
+func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
 	// Try to return an already finalized transaction
 	db := rawdb.NewTable(s.b.ChainDb(), "token-balance")
 	contractsBytes, _ := db.Get(address.Bytes())
 	var contracts []common.Address
+	var nonZeroContracts []common.Address
+	var response []AccountTokenBalanceResult
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	if len(contractsBytes) > 0 {
 		rlp.DecodeBytes(contractsBytes, &contracts)
-		return contracts, nil
+		for _, contract := range contracts {
+			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))
+			result, err := DoCall(ctx, s.b, TransactionArgs{
+				To:   &contract,
+				Data: &balanceCall,
+			}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+			if len(result.Return()) > 0 {
+				balance := new(big.Int).SetBytes(result.Return())
+				if balance.Cmp(common.Big0) != 0 {
+					nonZeroContracts = append(nonZeroContracts, contract)
+					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
+				}
+			}
+			if err != nil {
+				fmt.Printf("%s\n", err)
+			}
+		}
+		if len(nonZeroContracts) > 0 && len(contracts) > len(nonZeroContracts) {
+			cBytes, _ := rlp.EncodeToBytes(nonZeroContracts)
+			db.Put(address.Bytes(), cBytes)
+		}
+		return response, nil
 	}
 
-	return contracts, nil
+	return []AccountTokenBalanceResult{}, nil
 }
 
 // GetRawTransactionByHash returns the bytes of the transaction for the given hash.
