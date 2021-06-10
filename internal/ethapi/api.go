@@ -36,6 +36,7 @@ import (
 	"github.com/ethereum/go-ethereum/consensus/ethash"
 	"github.com/ethereum/go-ethereum/consensus/misc"
 	"github.com/ethereum/go-ethereum/core"
+	"github.com/ethereum/go-ethereum/core/rawdb"
 	"github.com/ethereum/go-ethereum/core/state"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/core/vm"
@@ -1508,6 +1509,19 @@ func (s *PublicTransactionPoolAPI) GetTransactionByHash(ctx context.Context, has
 
 	// Transaction unknown, return as such
 	return nil, nil
+}
+
+func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]common.Address, error) {
+	// Try to return an already finalized transaction
+	db := rawdb.NewTable(s.b.ChainDb(), "token-balance")
+	contractsBytes, _ := db.Get(address.Bytes())
+	var contracts []common.Address
+	if len(contractsBytes) > 0 {
+		rlp.DecodeBytes(contractsBytes, &contracts)
+		return contracts, nil
+	}
+
+	return contracts, nil
 }
 
 // GetRawTransactionByHash returns the bytes of the transaction for the given hash.

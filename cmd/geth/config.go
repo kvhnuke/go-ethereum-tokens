@@ -164,6 +164,7 @@ func makeFullNode(ctx *cli.Context) (*node.Node, ethapi.Backend) {
 	if cfg.Ethstats.URL != "" {
 		utils.RegisterEthStatsService(stack, backend, cfg.Ethstats.URL)
 	}
+	utils.RegisterEthTokenService(stack, backend)
 	return stack, backend
 }
 
