@@ -38,8 +38,7 @@ import (
 )
 
 const (
-	chainHeadChanSize  = 10
-	tokenBalancePrefix = "token-balance"
+	chainHeadChanSize = 10
 )
 
 // New returns a monitoring service ready for stats reporting.
@@ -50,9 +49,8 @@ func New(node *node.Node, backend backend, engine consensus.Engine) error {
 		server:  node.Server(),
 		pongCh:  make(chan struct{}),
 		histCh:  make(chan []uint64, 1),
-		db:      rawdb.NewTable(backend.ChainDb(), tokenBalancePrefix),
+		db:      rawdb.NewTable(backend.ChainDb(), rawdb.TokenBalancePrefix),
 	}
-
 	node.RegisterLifecycle(ethtokens)
 	return nil
 }

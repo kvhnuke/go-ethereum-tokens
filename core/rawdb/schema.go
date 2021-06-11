@@ -27,6 +27,7 @@ import (
 
 // The fields below define the low level database schema prefixing.
 var (
+	TokenBalancePrefix = "token-balance"
 	// databaseVersionKey tracks the current database version.
 	databaseVersionKey = []byte("DatabaseVersion")
 

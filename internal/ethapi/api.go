@@ -1519,7 +1519,7 @@ type AccountTokenBalanceResult struct {
 
 func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
 	// Try to return an already finalized transaction
-	db := rawdb.NewTable(s.b.ChainDb(), "token-balance")
+	db := rawdb.NewTable(s.b.ChainDb(), rawdb.TokenBalancePrefix)
 	contractsBytes, _ := db.Get(address.Bytes())
 	var contracts []common.Address
 	var nonZeroContracts []common.Address
