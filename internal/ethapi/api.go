@@ -1526,8 +1526,11 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	iter, idx := db.NewIterator(address.Bytes(), nil), 0
 	for iter.Next() {
-		contracts = append(contracts, common.BytesToAddress(iter.Value()))
-		fmt.Printf("%s %s \n", hexutil.Encode(iter.Key()), hexutil.Encode(iter.Value()))
+		if len(iter.Value()) > 20 {
+			db.Delete(iter.Key())
+		} else {
+			contracts = append(contracts, common.BytesToAddress(iter.Value()))
+		}
 		idx++
 	}
 	fmt.Printf("contracts length %d \n", idx)
