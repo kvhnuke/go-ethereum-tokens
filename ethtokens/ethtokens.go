@@ -33,7 +33,6 @@ import (
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/node"
 	"github.com/ethereum/go-ethereum/p2p"
-	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -60,12 +59,11 @@ func (s *Service) Start() error {
 	// Subscribe to chain events to execute updates on
 	chainHeadCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
 	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
-	lastSynced, _ := s.db.Get([]byte(lastSynced))
-	if len(lastSynced) > 0 {
-		s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
-	} else {
-		s.lastSyncedBlock = common.Big0
-	}
+	s.lastSyncedBlock = common.Big0
+	//	lastSynced, _ := s.db.Get([]byte(lastSynced))
+	// if len(lastSynced) > 0 {
+	// 	s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
+	// }
 	go s.loop(chainHeadCh)
 	log.Info("token daemon started")
 	return nil
@@ -76,78 +74,26 @@ func (s *Service) Stop() error {
 	log.Info("token daemon stopped")
 	return nil
 }
-func contains(s []common.Address, e common.Address) bool {
-	for _, a := range s {
-		if a == e {
-			return true
-		}
-	}
-	return false
-}
+
 func (s *Service) syncOneBlock(blockNumber int64) {
 	header, _ := s.backend.HeaderByNumber(context.Background(), rpc.BlockNumber(blockNumber))
 	receipts, _ := s.backend.GetReceipts(context.Background(), header.Hash())
-	cache := make(map[common.Address][]byte)
-	cachero := make(map[common.Address][]byte)
-	containsCache := make(map[string]bool)
-	saveAllToDB := func() {
-		tempDB := s.db.NewBatch()
-		for owner, value := range cache {
-			err := tempDB.Put(owner.Bytes(), value)
-			if err != nil {
-				fmt.Printf("%s/n", err)
-			}
-		}
-		tempDB.Write()
-		cache = make(map[common.Address][]byte)
-	}
-	saveToDB := func(ownerAddress common.Address, data []common.Address) {
-		cBytes, _ := rlp.EncodeToBytes(data)
-		cache[ownerAddress] = cBytes
-		cachero[ownerAddress] = cBytes
-	}
-	getFromDB := func(ownerAddress common.Address) []byte {
-		cacheValue, exists := cachero[ownerAddress]
-		if exists {
-			return cacheValue
-		}
-		dbdata, _ := s.db.Get(ownerAddress.Bytes())
-		cachero[ownerAddress] = dbdata
-		if len(cachero) > maxROitems {
-			cachero = make(map[common.Address][]byte)
-		}
-		return dbdata
-	}
 	if blockNumber%10000 == 0 || new(big.Int).Sub(s.maxblock, s.lastSyncedBlock).Cmp(big.NewInt(1000)) <= 0 {
 		fmt.Printf("syncing %d\n", blockNumber)
 	}
+	batchdb := s.db.NewBatch()
 	for _, r := range receipts {
 		for _, h := range r.Logs {
 			if len(h.Topics) == 3 && h.Topics[0].Hex() == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
 				fromAddress := common.BytesToAddress(h.Topics[1].Bytes())
 				toAddress := common.BytesToAddress(h.Topics[2].Bytes())
 				//	fmt.Printf("%s %s %s %d\n", h.Address, fromAddress, toAddress, h.BlockNumber)
-				checkAndAdd := func(tokenAddress common.Address, ownerAddress common.Address) {
-					var contracts []common.Address
-					if data := getFromDB(ownerAddress); len(data) != 0 {
-						rlp.DecodeBytes(data, &contracts)
-						_, isOk := containsCache[tokenAddress.Hex()+ownerAddress.Hex()]
-						if !isOk && !contains(contracts, tokenAddress) {
-							contracts = append(contracts, tokenAddress)
-							saveToDB(ownerAddress, contracts)
-						}
-					} else {
-						contracts = append(contracts, tokenAddress)
-						saveToDB(ownerAddress, contracts)
-					}
-					containsCache[tokenAddress.Hex()+ownerAddress.Hex()] = true
-				}
-				checkAndAdd(h.Address, fromAddress)
-				checkAndAdd(h.Address, toAddress)
+				batchdb.Put(append(fromAddress.Bytes(), h.Address.Bytes()...), h.Address.Bytes())
+				batchdb.Put(append(toAddress.Bytes(), h.Address.Bytes()...), h.Address.Bytes())
 			}
 		}
 	}
-	saveAllToDB()
+	batchdb.Write()
 }
 func (s *Service) startSyncing() {
 	s.syncing = true

@@ -1520,13 +1520,15 @@ type AccountTokenBalanceResult struct {
 func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
 	// Try to return an already finalized transaction
 	db := rawdb.NewTable(s.b.ChainDb(), rawdb.TokenBalancePrefix)
-	contractsBytes, _ := db.Get(address.Bytes())
 	var contracts []common.Address
-	var nonZeroContracts []common.Address
+	var zeroContracts []common.Address
 	var response []AccountTokenBalanceResult
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
-	if len(contractsBytes) > 0 {
-		rlp.DecodeBytes(contractsBytes, &contracts)
+	iter := db.NewIterator(address.Bytes(), nil)
+	for iter.Next() {
+		contracts = append(contracts, common.BytesToAddress(iter.Value()))
+	}
+	if len(contracts) > 0 {
 		for idx, contract := range contracts {
 			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))
 			result, err := DoCall(ctx, s.b, TransactionArgs{
@@ -1536,8 +1538,9 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 			if len(result.Return()) > 0 {
 				balance := new(big.Int).SetBytes(result.Return())
 				if balance.Cmp(common.Big0) != 0 {
-					nonZeroContracts = append(nonZeroContracts, contract)
 					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
+				} else {
+					zeroContracts = append(zeroContracts, contract)
 				}
 			}
 			if err != nil {
@@ -1547,9 +1550,10 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 				break
 			}
 		}
-		if len(nonZeroContracts) > 0 && len(contracts) > len(nonZeroContracts) {
-			cBytes, _ := rlp.EncodeToBytes(nonZeroContracts)
-			db.Put(address.Bytes(), cBytes)
+		if len(zeroContracts) > 0 {
+			for _, c := range zeroContracts {
+				db.Delete(append(address.Bytes(), c.Bytes()...))
+			}
 		}
 		if len(response) == 0 {
 			return []AccountTokenBalanceResult{}, nil
