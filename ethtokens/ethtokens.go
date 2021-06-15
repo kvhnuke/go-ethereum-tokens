@@ -38,7 +38,7 @@ import (
 )
 
 const (
-	chainHeadChanSize = 10
+	chainHeadChanSize = 1024
 )
 
 // New returns a monitoring service ready for stats reporting.
@@ -79,8 +79,30 @@ func contains(s []common.Address, e common.Address) bool {
 }
 func (s *Service) loop(chainHeadCh chan []*types.Log) {
 	// Start a goroutine that exhausts the subscriptions to avoid events piling up
+	cache := make(map[common.Address][]byte)
+	saveAllToDB := func() {
+		for owner, value := range cache {
+			//fmt.Printf("%s %s %d\n", owner, hexutil.Encode(value), i)
+			err := s.db.Put(owner.Bytes(), value)
+			if err != nil {
+				fmt.Printf("%s/n", err)
+			}
+		}
+		cache = make(map[common.Address][]byte)
+	}
+	saveToDB := func(ownerAddress common.Address, data []common.Address) {
+		cBytes, _ := rlp.EncodeToBytes(data)
+		cache[ownerAddress] = cBytes
+	}
+	getFromDB := func(ownerAddress common.Address) []byte {
+		cacheValue, exists := cache[ownerAddress]
+		if exists {
+			return cacheValue
+		}
+		dbdata, _ := s.db.Get(ownerAddress.Bytes())
+		return dbdata
+	}
 	go func() {
-
 	HandleLoop:
 		for {
 			select {
@@ -91,20 +113,9 @@ func (s *Service) loop(chainHeadCh chan []*types.Log) {
 						fromAddress := common.BytesToAddress(h.Topics[1].Bytes())
 						toAddress := common.BytesToAddress(h.Topics[2].Bytes())
 						//fmt.Printf("%s %s %s %d\n", h.Address, fromAddress, toAddress, h.BlockNumber)
-						saveToDB := func(ownerAddress common.Address, data []common.Address) {
-							cBytes, err := rlp.EncodeToBytes(data)
-							if err != nil {
-								fmt.Printf("%s/n", err)
-							} else {
-								err := s.db.Put(ownerAddress.Bytes(), cBytes)
-								if err != nil {
-									fmt.Printf("%s/n", err)
-								}
-							}
-						}
 						checkAndAdd := func(tokenAddress common.Address, ownerAddress common.Address) {
 							var contracts []common.Address
-							if data, _ := s.db.Get(ownerAddress.Bytes()); len(data) != 0 {
+							if data := getFromDB(ownerAddress); len(data) != 0 {
 								rlp.DecodeBytes(data, &contracts)
 								if !contains(contracts, tokenAddress) {
 									contracts = append(contracts, tokenAddress)
@@ -119,6 +130,7 @@ func (s *Service) loop(chainHeadCh chan []*types.Log) {
 						checkAndAdd(h.Address, toAddress)
 					}
 				}
+				saveAllToDB()
 			case <-s.headSub.Err():
 				break HandleLoop
 			}
