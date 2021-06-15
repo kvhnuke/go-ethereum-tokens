@@ -1521,7 +1521,6 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	// Try to return an already finalized transaction
 	db := rawdb.NewTable(s.b.ChainDb(), rawdb.TokenBalancePrefix)
 	var contracts []common.Address
-	var zeroContracts []common.Address
 	var response []AccountTokenBalanceResult
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	iter, idx := db.NewIterator(address.Bytes(), nil), 0
@@ -1532,10 +1531,13 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 			contracts = append(contracts, common.BytesToAddress(iter.Value()))
 		}
 		idx++
+		// if idx > 10000 {
+		// 	break
+		// }
 	}
 	fmt.Printf("contracts length %d \n", idx)
 	if len(contracts) > 0 {
-		for idx, contract := range contracts {
+		for _, contract := range contracts {
 			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))
 			result, err := DoCall(ctx, s.b, TransactionArgs{
 				To:   &contract,
@@ -1546,21 +1548,13 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 				if balance.Cmp(common.Big0) != 0 {
 					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
 				} else {
-					zeroContracts = append(zeroContracts, contract)
+					db.Delete(append(address.Bytes(), contract.Bytes()...))
 				}
 			} else {
-				zeroContracts = append(zeroContracts, contract)
+				db.Delete(append(address.Bytes(), contract.Bytes()...))
 			}
 			if err != nil {
 				fmt.Printf("%s\n", err)
-			}
-			if idx > 10000 {
-				break
-			}
-		}
-		if len(zeroContracts) > 0 {
-			for _, c := range zeroContracts {
-				db.Delete(append(address.Bytes(), c.Bytes()...))
 			}
 		}
 		if len(response) == 0 {
