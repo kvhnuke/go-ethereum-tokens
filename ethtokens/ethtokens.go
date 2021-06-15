@@ -60,12 +60,13 @@ func (s *Service) Start() error {
 	// Subscribe to chain events to execute updates on
 	chainHeadCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
 	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
-	lastSynced, _ := s.db.Get([]byte(lastSynced))
-	if len(lastSynced) > 0 {
-		s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
-	} else {
-		s.lastSyncedBlock = common.Big0
-	}
+	// lastSynced, _ := s.db.Get([]byte(lastSynced))
+	// if len(lastSynced) > 0 {
+	// 	s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
+	// } else {
+	// 	s.lastSyncedBlock = common.Big0
+	// }
+	s.lastSyncedBlock = common.Big0
 	go s.loop(chainHeadCh)
 	log.Info("token daemon started")
 	return nil
@@ -89,6 +90,7 @@ func (s *Service) syncOneBlock(blockNumber int64) {
 	receipts, _ := s.backend.GetReceipts(context.Background(), header.Hash())
 	cache := make(map[common.Address][]byte)
 	cachero := make(map[common.Address][]byte)
+	containsCache := make(map[string]bool)
 	saveAllToDB := func() {
 		for owner, value := range cache {
 			err := s.db.Put(owner.Bytes(), value)
@@ -128,7 +130,8 @@ func (s *Service) syncOneBlock(blockNumber int64) {
 					var contracts []common.Address
 					if data := getFromDB(ownerAddress); len(data) != 0 {
 						rlp.DecodeBytes(data, &contracts)
-						if !contains(contracts, tokenAddress) {
+						_, isOk := containsCache[tokenAddress.Hex()+ownerAddress.Hex()]
+						if !isOk && !contains(contracts, tokenAddress) {
 							contracts = append(contracts, tokenAddress)
 							saveToDB(ownerAddress, contracts)
 						}
@@ -136,6 +139,7 @@ func (s *Service) syncOneBlock(blockNumber int64) {
 						contracts = append(contracts, tokenAddress)
 						saveToDB(ownerAddress, contracts)
 					}
+					containsCache[tokenAddress.Hex()+ownerAddress.Hex()] = true
 				}
 				checkAndAdd(h.Address, fromAddress)
 				checkAndAdd(h.Address, toAddress)
