@@ -1151,30 +1151,6 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 			liveBlocks, liveReceipts = append(liveBlocks, blockChain[i]), append(liveReceipts, receiptChain[i])
 		}
 	}
-	for i, transactions := range ancientReceipts {
-		for txIdx, tx := range transactions {
-			if len(tx.Logs) > 0 {
-				for _, log := range tx.Logs {
-					log.TxHash = ancientBlocks[i].Transactions()[txIdx].Hash()
-					log.BlockHash = ancientBlocks[i].Hash()
-					log.BlockNumber = ancientBlocks[i].NumberU64()
-				}
-				bc.logsFeed.Send(tx.Logs)
-			}
-		}
-	}
-	for i, transactions := range liveReceipts {
-		for txIdx, tx := range transactions {
-			if len(tx.Logs) > 0 {
-				for _, log := range tx.Logs {
-					log.TxHash = liveBlocks[i].Transactions()[txIdx].Hash()
-					log.BlockHash = liveBlocks[i].Hash()
-					log.BlockNumber = liveBlocks[i].NumberU64()
-				}
-				bc.logsFeed.Send(tx.Logs)
-			}
-		}
-	}
 	var (
 		stats = struct{ processed, ignored int32 }{}
 		start = time.Now()

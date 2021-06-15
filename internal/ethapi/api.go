@@ -1527,7 +1527,7 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	if len(contractsBytes) > 0 {
 		rlp.DecodeBytes(contractsBytes, &contracts)
-		for _, contract := range contracts {
+		for idx, contract := range contracts {
 			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))
 			result, err := DoCall(ctx, s.b, TransactionArgs{
 				To:   &contract,
@@ -1542,6 +1542,9 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 			}
 			if err != nil {
 				fmt.Printf("%s\n", err)
+			}
+			if idx > 10000 {
+				break
 			}
 		}
 		if len(nonZeroContracts) > 0 && len(contracts) > len(nonZeroContracts) {
@@ -1572,6 +1575,11 @@ func (s *PublicTransactionPoolAPI) GetRawTransactionByHash(ctx context.Context, 
 	}
 	// Serialize to RLP and return
 	return tx.MarshalBinary()
+}
+func (s *PublicBlockChainAPI) GetLogsByBlockNumber(ctx context.Context, blockNr rpc.BlockNumber) (interface{}, error) {
+	block, _ := s.b.HeaderByNumber(ctx, blockNr)
+	receipts, _ := s.b.GetReceipts(ctx, block.Hash())
+	return receipts, nil
 }
 
 // GetTransactionReceipt returns the transaction receipt for the given transaction hash.

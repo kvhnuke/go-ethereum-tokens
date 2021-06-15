@@ -39,6 +39,8 @@ import (
 
 const (
 	chainHeadChanSize = 1024
+	lastSynced        = "lastsynced"
+	maxROitems        = 1024 * 10
 )
 
 // New returns a monitoring service ready for stats reporting.
@@ -56,10 +58,15 @@ func New(node *node.Node, backend backend, engine consensus.Engine) error {
 }
 func (s *Service) Start() error {
 	// Subscribe to chain events to execute updates on
-	chainHeadCh := make(chan []*types.Log, chainHeadChanSize)
-	s.headSub = s.backend.SubscribeLogsEvent(chainHeadCh)
+	chainHeadCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
+	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
+	lastSynced, _ := s.db.Get([]byte(lastSynced))
+	if len(lastSynced) > 0 {
+		s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
+	} else {
+		s.lastSyncedBlock = common.Big0
+	}
 	go s.loop(chainHeadCh)
-
 	log.Info("token daemon started")
 	return nil
 }
@@ -77,12 +84,13 @@ func contains(s []common.Address, e common.Address) bool {
 	}
 	return false
 }
-func (s *Service) loop(chainHeadCh chan []*types.Log) {
-	// Start a goroutine that exhausts the subscriptions to avoid events piling up
+func (s *Service) syncOneBlock(blockNumber int64) {
+	header, _ := s.backend.HeaderByNumber(context.Background(), rpc.BlockNumber(blockNumber))
+	receipts, _ := s.backend.GetReceipts(context.Background(), header.Hash())
 	cache := make(map[common.Address][]byte)
+	cachero := make(map[common.Address][]byte)
 	saveAllToDB := func() {
 		for owner, value := range cache {
-			//fmt.Printf("%s %s %d\n", owner, hexutil.Encode(value), i)
 			err := s.db.Put(owner.Bytes(), value)
 			if err != nil {
 				fmt.Printf("%s/n", err)
@@ -93,44 +101,69 @@ func (s *Service) loop(chainHeadCh chan []*types.Log) {
 	saveToDB := func(ownerAddress common.Address, data []common.Address) {
 		cBytes, _ := rlp.EncodeToBytes(data)
 		cache[ownerAddress] = cBytes
+		cachero[ownerAddress] = cBytes
 	}
 	getFromDB := func(ownerAddress common.Address) []byte {
-		cacheValue, exists := cache[ownerAddress]
+		cacheValue, exists := cachero[ownerAddress]
 		if exists {
 			return cacheValue
 		}
 		dbdata, _ := s.db.Get(ownerAddress.Bytes())
+		cachero[ownerAddress] = dbdata
+		if len(cachero) > maxROitems {
+			cachero = make(map[common.Address][]byte)
+		}
 		return dbdata
 	}
+	if blockNumber%10000 == 0 || new(big.Int).Sub(s.maxblock, s.lastSyncedBlock).Cmp(big.NewInt(1000)) <= 0 {
+		fmt.Printf("syncing %d\n", blockNumber)
+	}
+	for _, r := range receipts {
+		for _, h := range r.Logs {
+			if len(h.Topics) == 3 && h.Topics[0].Hex() == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
+				fromAddress := common.BytesToAddress(h.Topics[1].Bytes())
+				toAddress := common.BytesToAddress(h.Topics[2].Bytes())
+				//	fmt.Printf("%s %s %s %d\n", h.Address, fromAddress, toAddress, h.BlockNumber)
+				checkAndAdd := func(tokenAddress common.Address, ownerAddress common.Address) {
+					var contracts []common.Address
+					if data := getFromDB(ownerAddress); len(data) != 0 {
+						rlp.DecodeBytes(data, &contracts)
+						if !contains(contracts, tokenAddress) {
+							contracts = append(contracts, tokenAddress)
+							saveToDB(ownerAddress, contracts)
+						}
+					} else {
+						contracts = append(contracts, tokenAddress)
+						saveToDB(ownerAddress, contracts)
+					}
+				}
+				checkAndAdd(h.Address, fromAddress)
+				checkAndAdd(h.Address, toAddress)
+			}
+		}
+	}
+	saveAllToDB()
+}
+func (s *Service) startSyncing() {
+	s.syncing = true
+	for i := new(big.Int).Set(s.lastSyncedBlock); i.Cmp(s.maxblock) <= 0; i.Add(i, common.Big1) {
+		s.syncOneBlock(i.Int64())
+		s.lastSyncedBlock = i
+		s.db.Put([]byte(lastSynced), i.Bytes())
+	}
+	s.syncing = false
+}
+func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent) {
 	go func() {
 	HandleLoop:
 		for {
 			select {
-			// Notify of chain head events, but drop if too frequent
 			case head := <-chainHeadCh:
-				for _, h := range head {
-					if len(h.Topics) == 3 && h.Topics[0].Hex() == "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef" {
-						fromAddress := common.BytesToAddress(h.Topics[1].Bytes())
-						toAddress := common.BytesToAddress(h.Topics[2].Bytes())
-						//fmt.Printf("%s %s %s %d\n", h.Address, fromAddress, toAddress, h.BlockNumber)
-						checkAndAdd := func(tokenAddress common.Address, ownerAddress common.Address) {
-							var contracts []common.Address
-							if data := getFromDB(ownerAddress); len(data) != 0 {
-								rlp.DecodeBytes(data, &contracts)
-								if !contains(contracts, tokenAddress) {
-									contracts = append(contracts, tokenAddress)
-									saveToDB(ownerAddress, contracts)
-								}
-							} else {
-								contracts = append(contracts, tokenAddress)
-								saveToDB(ownerAddress, contracts)
-							}
-						}
-						checkAndAdd(h.Address, fromAddress)
-						checkAndAdd(h.Address, toAddress)
-					}
+				s.maxblock = head.Block.Number()
+				if !s.syncing {
+					go s.startSyncing()
 				}
-				saveAllToDB()
+				fmt.Printf("%s \n", head.Block.Number())
 			case <-s.headSub.Err():
 				break HandleLoop
 			}
@@ -146,6 +179,7 @@ type backend interface {
 	SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription
 	CurrentHeader() *types.Header
 	HeaderByNumber(ctx context.Context, number rpc.BlockNumber) (*types.Header, error)
+	GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error)
 	GetTd(ctx context.Context, hash common.Hash) *big.Int
 	Stats() (pending int, queued int)
 	Downloader() *downloader.Downloader
@@ -162,6 +196,9 @@ type Service struct {
 	pongCh chan struct{} // Pong notifications are fed into this channel
 	histCh chan []uint64 // History request block numbers are fed into this channel
 
-	headSub event.Subscription
-	db      ethdb.Database
+	headSub         event.Subscription
+	db              ethdb.Database
+	syncing         bool
+	maxblock        *big.Int
+	lastSyncedBlock *big.Int
 }
