@@ -1527,6 +1527,7 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	iter, idx := db.NewIterator(address.Bytes(), nil), 0
 	for iter.Next() {
 		contracts = append(contracts, common.BytesToAddress(iter.Value()))
+		fmt.Printf("%s %s \n", hexutil.Encode(iter.Key()), hexutil.Encode(iter.Value()))
 		idx++
 	}
 	fmt.Printf("contracts length %d \n", idx)
@@ -1544,6 +1545,8 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 				} else {
 					zeroContracts = append(zeroContracts, contract)
 				}
+			} else {
+				zeroContracts = append(zeroContracts, contract)
 			}
 			if err != nil {
 				fmt.Printf("%s\n", err)
