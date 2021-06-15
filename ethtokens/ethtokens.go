@@ -162,6 +162,8 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent) {
 				s.maxblock = head.Block.Number()
 				if !s.syncing {
 					go s.startSyncing()
+				} else {
+					s.syncOneBlock(head.Block.Number().Int64())
 				}
 				fmt.Printf("%s \n", head.Block.Number())
 			case <-s.headSub.Err():
