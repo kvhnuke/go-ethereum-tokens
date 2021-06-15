@@ -91,12 +91,14 @@ func (s *Service) syncOneBlock(blockNumber int64) {
 	cachero := make(map[common.Address][]byte)
 	containsCache := make(map[string]bool)
 	saveAllToDB := func() {
+		tempDB := s.db.NewBatch()
 		for owner, value := range cache {
-			err := s.db.Put(owner.Bytes(), value)
+			err := tempDB.Put(owner.Bytes(), value)
 			if err != nil {
 				fmt.Printf("%s/n", err)
 			}
 		}
+		tempDB.Write()
 		cache = make(map[common.Address][]byte)
 	}
 	saveToDB := func(ownerAddress common.Address, data []common.Address) {
