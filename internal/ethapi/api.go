@@ -1524,10 +1524,12 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	var zeroContracts []common.Address
 	var response []AccountTokenBalanceResult
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
-	iter := db.NewIterator(address.Bytes(), nil)
+	iter, idx := db.NewIterator(address.Bytes(), nil), 0
 	for iter.Next() {
 		contracts = append(contracts, common.BytesToAddress(iter.Value()))
+		idx++
 	}
+	fmt.Printf("contracts length %d \n", idx)
 	if len(contracts) > 0 {
 		for idx, contract := range contracts {
 			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))

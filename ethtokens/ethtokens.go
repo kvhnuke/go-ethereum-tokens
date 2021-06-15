@@ -60,10 +60,10 @@ func (s *Service) Start() error {
 	chainHeadCh := make(chan core.ChainHeadEvent, chainHeadChanSize)
 	s.headSub = s.backend.SubscribeChainHeadEvent(chainHeadCh)
 	s.lastSyncedBlock = common.Big0
-	//	lastSynced, _ := s.db.Get([]byte(lastSynced))
-	// if len(lastSynced) > 0 {
-	// 	s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
-	// }
+	lastSynced, _ := s.db.Get([]byte(lastSynced))
+	if len(lastSynced) > 0 {
+		s.lastSyncedBlock = new(big.Int).SetBytes(lastSynced)
+	}
 	go s.loop(chainHeadCh)
 	log.Info("token daemon started")
 	return nil
