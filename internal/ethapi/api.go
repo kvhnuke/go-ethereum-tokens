@@ -1531,9 +1531,9 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 			contracts = append(contracts, common.BytesToAddress(iter.Value()))
 		}
 		idx++
-		// if idx > 10000 {
-		// 	break
-		// }
+		if idx > 10000 {
+			break
+		}
 	}
 	fmt.Printf("contracts length %d \n", idx)
 	if len(contracts) > 0 {
