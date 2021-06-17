@@ -1537,14 +1537,20 @@ func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address
 	}
 	fmt.Printf("contracts length %d \n", idx)
 	if len(contracts) > 0 {
+		Address, _ := abi.NewType("address", "", nil)
+		Uint256, _ := abi.NewType("uint256", "", nil)
+		balanceOf := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "", true, false, []abi.Argument{{"owner", Address, false}}, []abi.Argument{{"balance", Uint256, false}})
+
 		for _, contract := range contracts {
-			balanceCall := hexutil.Bytes(append(hexutil.MustDecode("0x70a08231"), address.Hash().Bytes()...))
+			balanceCall, _ := balanceOf.Inputs.Pack(address)
+			balanceCallHex := hexutil.Bytes(append(balanceOf.ID, balanceCall...))
 			result, err := DoCall(ctx, s.b, TransactionArgs{
 				To:   &contract,
-				Data: &balanceCall,
+				Data: &balanceCallHex,
 			}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
 			if len(result.Return()) > 0 {
-				balance := new(big.Int).SetBytes(result.Return())
+				ret, _ := balanceOf.Outputs.Unpack(result.Return())
+				balance := ret[0].(*big.Int)
 				if balance.Cmp(common.Big0) != 0 {
 					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
 				} else {
