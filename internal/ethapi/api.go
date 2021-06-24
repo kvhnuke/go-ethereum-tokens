@@ -996,14 +996,18 @@ func (s *PublicBlockChainAPI) Call(ctx context.Context, args TransactionArgs, bl
 func DoEstimateGasWithState(ctx context.Context, b Backend, args TransactionArgs, prevState *PreviousState, blockNrOrHash rpc.BlockNumberOrHash, gasCap uint64) (hexutil.Uint64, *PreviousState, error) {
 	// Binary search the gas requirement, as it may be higher than the amount used
 	var (
-		lo        uint64 = params.TxGas - 1
-		hi        uint64
-		cap       uint64
-		stateData *PreviousState
+		lo            uint64 = params.TxGas - 1
+		hi            uint64
+		cap           uint64
+		stateData     *PreviousState
+		copyPrevState *PreviousState
 	)
 	// Use zero address if sender unspecified.
 	if args.From == nil {
 		args.From = new(common.Address)
+	}
+	if prevState == nil {
+		prevState = &PreviousState{}
 	}
 	// Determine the highest gas limit can be used during the estimation.
 	if args.Gas != nil && uint64(*args.Gas) >= params.TxGas {
@@ -1056,8 +1060,12 @@ func DoEstimateGasWithState(ctx context.Context, b Backend, args TransactionArgs
 	// Create a helper to check if a gas allowance results in an executable transaction
 	executable := func(gas uint64) (bool, *core.ExecutionResult, error) {
 		args.Gas = (*hexutil.Uint64)(&gas)
-
-		result, prevS, err := DoCallWithState(ctx, b, args, prevState, blockNrOrHash, 0, gasCap)
+		if prevState.state != nil {
+			copyPrevState = &PreviousState{}
+			copyPrevState.state = prevState.state.Copy()
+			copyPrevState.header = prevState.header
+		}
+		result, prevS, err := DoCallWithState(ctx, b, args, copyPrevState, blockNrOrHash, 0, gasCap)
 		stateData = prevS
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
@@ -1226,7 +1234,7 @@ func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args TransactionA
 // EstimateGasList returns an estimate of the amount of gas needed to execute list of
 // given transactions against the current pending block.
 func (s *PublicBlockChainAPI) EstimateGasList(ctx context.Context, argsList []TransactionArgs) ([]hexutil.Uint64, error) {
-	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	blockNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.LatestBlockNumber)
 	var (
 		gas       hexutil.Uint64
 		err       error
@@ -1235,7 +1243,7 @@ func (s *PublicBlockChainAPI) EstimateGasList(ctx context.Context, argsList []Tr
 	)
 	returnVals := make([]hexutil.Uint64, len(argsList))
 	for idx, args := range argsList {
-		gas, stateData, err = DoEstimateGasWithState(ctx, s.b, args, stateData, blockNrOrHash, gasCap)
+		gas, stateData, err = DoEstimateGasWithState(ctx, s.b, args, stateData, blockNrOrHash, s.b.RPCGasCap())
 		if err != nil {
 			return nil, err
 		}
