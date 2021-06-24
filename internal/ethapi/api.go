@@ -1066,12 +1066,14 @@ func DoEstimateGasWithState(ctx context.Context, b Backend, args TransactionArgs
 			copyPrevState.header = prevState.header
 		}
 		result, prevS, err := DoCallWithState(ctx, b, args, copyPrevState, blockNrOrHash, 0, gasCap)
-		stateData = prevS
 		if err != nil {
 			if errors.Is(err, core.ErrIntrinsicGas) {
 				return true, nil, nil // Special case, raise gas limit
 			}
 			return true, nil, err // Bail out
+		}
+		if !result.Failed() {
+			stateData = prevS
 		}
 		return result.Failed(), result, nil
 	}
