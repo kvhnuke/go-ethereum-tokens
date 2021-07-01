@@ -1727,11 +1727,13 @@ type AccountTokenBalanceResult struct {
 	Balance  string         `json:"balance"`
 }
 
-func (s *PublicTransactionPoolAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
+func (s *PublicBlockChainAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
 	// Try to return an already finalized transaction
 	db := rawdb.NewTable(s.b.ChainDb(), rawdb.TokenBalancePrefix)
 	var contracts []common.Address
 	var response []AccountTokenBalanceResult
+	accountBalance, _ := s.GetBalance(ctx, address, rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber))
+	response = append(response, AccountTokenBalanceResult{Contract: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"), Balance: accountBalance.String()})
 	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
 	iter, idx := db.NewIterator(address.Bytes(), nil), 0
 	for iter.Next() {
