@@ -1748,40 +1748,35 @@ func (s *PublicBlockChainAPI) GetAccountTokens(ctx context.Context, address comm
 		}
 	}
 	fmt.Printf("contracts length %d \n", idx)
-	if len(contracts) > 0 {
-		Address, _ := abi.NewType("address", "", nil)
-		Uint256, _ := abi.NewType("uint256", "", nil)
-		balanceOf := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "", true, false, []abi.Argument{{"owner", Address, false}}, []abi.Argument{{"balance", Uint256, false}})
+	Address, _ := abi.NewType("address", "", nil)
+	Uint256, _ := abi.NewType("uint256", "", nil)
+	balanceOf := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "", true, false, []abi.Argument{{"owner", Address, false}}, []abi.Argument{{"balance", Uint256, false}})
 
-		for _, contract := range contracts {
-			balanceCall, _ := balanceOf.Inputs.Pack(address)
-			balanceCallHex := hexutil.Bytes(append(balanceOf.ID, balanceCall...))
-			result, err := DoCall(ctx, s.b, TransactionArgs{
-				To:   &contract,
-				Data: &balanceCallHex,
-			}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
-			if len(result.Return()) > 0 {
-				ret, _ := balanceOf.Outputs.Unpack(result.Return())
-				balance := ret[0].(*big.Int)
-				if balance.Cmp(common.Big0) != 0 {
-					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
-				} else {
-					db.Delete(append(address.Bytes(), contract.Bytes()...))
-				}
+	for _, contract := range contracts {
+		balanceCall, _ := balanceOf.Inputs.Pack(address)
+		balanceCallHex := hexutil.Bytes(append(balanceOf.ID, balanceCall...))
+		result, err := DoCall(ctx, s.b, TransactionArgs{
+			To:   &contract,
+			Data: &balanceCallHex,
+		}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+		if len(result.Return()) > 0 {
+			ret, _ := balanceOf.Outputs.Unpack(result.Return())
+			balance := ret[0].(*big.Int)
+			if balance.Cmp(common.Big0) != 0 {
+				response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
 			} else {
 				db.Delete(append(address.Bytes(), contract.Bytes()...))
 			}
-			if err != nil {
-				fmt.Printf("%s\n", err)
-			}
+		} else {
+			db.Delete(append(address.Bytes(), contract.Bytes()...))
 		}
-		if len(response) == 0 {
-			return []AccountTokenBalanceResult{}, nil
+		if err != nil {
+			fmt.Printf("%s\n", err)
 		}
-		return response, nil
 	}
 
-	return []AccountTokenBalanceResult{}, nil
+	return response, nil
+
 }
 
 // GetRawTransactionByHash returns the bytes of the transaction for the given hash.
