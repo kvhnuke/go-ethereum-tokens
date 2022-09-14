@@ -732,10 +732,10 @@ func (s *BlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) m
 }
 
 // GetBlockByNumber returns the requested canonical block.
-// * When blockNr is -1 the chain head is returned.
-// * When blockNr is -2 the pending chain head is returned.
-// * When fullTx is true all transactions in the block are returned, otherwise
-//   only the transaction hash is returned.
+//   - When blockNr is -1 the chain head is returned.
+//   - When blockNr is -2 the pending chain head is returned.
+//   - When fullTx is true all transactions in the block are returned, otherwise
+//     only the transaction hash is returned.
 func (s *BlockChainAPI) GetBlockByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
 	block, err := s.b.BlockByNumber(ctx, number)
 	if block != nil && err == nil {
@@ -1832,6 +1832,50 @@ func (s *TransactionAPI) GetTransactionByHash(ctx context.Context, hash common.H
 type AccountTokenBalanceResult struct {
 	Contract common.Address `json:"contract"`
 	Balance  string         `json:"balance"`
+}
+
+func (s *BlockChainAPI) GetTokenInfo(ctx context.Context, contractAddress common.Address) ([]hexutil.Bytes, error) {
+	var response []hexutil.Bytes
+	bNrOrHash := rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber)
+	String, _ := abi.NewType("string", "", nil)
+	Uint256, _ := abi.NewType("uint256", "", nil)
+	name := abi.NewMethod("name", "name", abi.Function, "", true, false, []abi.Argument{}, []abi.Argument{{"name", String, false}})
+	symbol := abi.NewMethod("symbol", "symbol", abi.Function, "", true, false, []abi.Argument{}, []abi.Argument{{"symbol", String, false}})
+	decimals := abi.NewMethod("decimals", "decimals", abi.Function, "", true, false, []abi.Argument{}, []abi.Argument{{"decimals", Uint256, false}})
+	nameCallHex := hexutil.Bytes(name.ID)
+	symbolCallHex := hexutil.Bytes(symbol.ID)
+	decimalsCallHex := hexutil.Bytes(decimals.ID)
+	resultName, _ := DoCall(ctx, s.b, TransactionArgs{
+		To:   &contractAddress,
+		Data: &nameCallHex,
+	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	resultSymbol, _ := DoCall(ctx, s.b, TransactionArgs{
+		To:   &contractAddress,
+		Data: &symbolCallHex,
+	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	resultDecimals, _ := DoCall(ctx, s.b, TransactionArgs{
+		To:   &contractAddress,
+		Data: &decimalsCallHex,
+	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	if len(resultName.Return()) > 0 {
+		ret, _ := name.Outputs.Unpack(resultName.Return())
+		response = append(response, []byte(ret[0].(string)))
+	} else {
+		response = append(response, []byte{})
+	}
+	if len(resultSymbol.Return()) > 0 {
+		ret, _ := symbol.Outputs.Unpack(resultSymbol.Return())
+		response = append(response, []byte(ret[0].(string)))
+	} else {
+		response = append(response, []byte{})
+	}
+	if len(resultDecimals.Return()) > 0 {
+		ret, _ := decimals.Outputs.Unpack(resultDecimals.Return())
+		response = append(response, ret[0].(*big.Int).Bytes())
+	} else {
+		response = append(response, []byte{})
+	}
+	return response, nil
 }
 
 func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
