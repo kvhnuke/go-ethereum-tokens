@@ -757,6 +757,23 @@ func (s *BlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash) m
 	return nil
 }
 
+func (s *BlockChainAPI) GetBlockAndReceiptsByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
+	block, err := s.b.BlockByNumber(ctx, number)
+	receipts, err := s.b.GetReceipts(ctx, block.Hash())
+	if block != nil && err == nil {
+		response, err := s.rpcMarshalBlock(ctx, block, true, fullTx)
+		if err == nil && number == rpc.PendingBlockNumber {
+			// Pending blocks need to nil out a few fields
+			for _, field := range []string{"hash", "nonce", "miner"} {
+				response[field] = nil
+			}
+		}
+		response["receipts"] = receipts
+		return response, err
+	}
+	return nil, err
+}
+
 // GetBlockByNumber returns the requested canonical block.
 //   - When blockNr is -1 the chain head is returned.
 //   - When blockNr is -2 the pending chain head is returned.
