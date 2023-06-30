@@ -974,7 +974,9 @@ func DoCallWithState(ctx context.Context, b Backend, args TransactionArgs, prevS
 	if err != nil {
 		return nil, nil, err
 	}
-	evm, vmError, err := b.GetEVM(ctx, msg, prevState.state, prevState.header, &vm.Config{NoBaseFee: true})
+	blockCtx := core.NewEVMBlockContext(prevState.header, NewChainContext(ctx, b), nil)
+
+	evm, vmError := b.GetEVM(ctx, msg, prevState.state, prevState.header, &vm.Config{NoBaseFee: true}, &blockCtx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1928,15 +1930,15 @@ func (s *BlockChainAPI) GetTokenInfo(ctx context.Context, contractAddress common
 	resultName, _ := DoCall(ctx, s.b, TransactionArgs{
 		To:   &contractAddress,
 		Data: &nameCallHex,
-	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	}, bNrOrHash, nil, nil, 5*time.Second, s.b.RPCGasCap())
 	resultSymbol, _ := DoCall(ctx, s.b, TransactionArgs{
 		To:   &contractAddress,
 		Data: &symbolCallHex,
-	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	}, bNrOrHash, nil, nil, 5*time.Second, s.b.RPCGasCap())
 	resultDecimals, _ := DoCall(ctx, s.b, TransactionArgs{
 		To:   &contractAddress,
 		Data: &decimalsCallHex,
-	}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+	}, bNrOrHash, nil, nil, 5*time.Second, s.b.RPCGasCap())
 	if len(resultName.Return()) > 0 {
 		ret, _ := name.Outputs.Unpack(resultName.Return())
 		response = append(response, []byte(ret[0].(string)))
@@ -1989,7 +1991,7 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 		result, err := DoCall(ctx, s.b, TransactionArgs{
 			To:   &contract,
 			Data: &balanceCallHex,
-		}, bNrOrHash, &StateOverride{}, 5*time.Second, s.b.RPCGasCap())
+		}, bNrOrHash, nil, nil, 5*time.Second, s.b.RPCGasCap())
 		if len(result.Return()) > 0 {
 			ret, _ := balanceOf.Outputs.Unpack(result.Return())
 			balance := ret[0].(*big.Int)
