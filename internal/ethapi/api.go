@@ -27,6 +27,7 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/ethereum/go-ethereum/accounts"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/accounts/scwallet"
 	"github.com/ethereum/go-ethereum/common"
@@ -1060,7 +1061,7 @@ func DoCallWithState(ctx context.Context, b Backend, args TransactionArgs, prevS
 	}
 	blockCtx := core.NewEVMBlockContext(prevState.header, NewChainContext(ctx, b), nil)
 
-	evm, vmError := b.GetEVM(ctx, msg, prevState.state, prevState.header, &vm.Config{NoBaseFee: true}, &blockCtx)
+	evm := b.GetEVM(ctx, msg, prevState.state, prevState.header, &vm.Config{NoBaseFee: true}, &blockCtx)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1074,7 +1075,7 @@ func DoCallWithState(ctx context.Context, b Backend, args TransactionArgs, prevS
 	// Execute the message.
 	gp := new(core.GasPool).AddGas(math.MaxUint64)
 	result, err := core.ApplyMessage(evm, msg, gp)
-	if err := vmError(); err != nil {
+	if err := prevState.state.Error(); err != nil {
 		return nil, nil, err
 	}
 
@@ -1284,7 +1285,7 @@ func DoEstimateGasWithState(ctx context.Context, b Backend, args TransactionArgs
 			return 0, nil, err
 		}
 		balance := state.GetBalance(*args.From) // from can't be nil
-		available := new(big.Int).Set(balance)
+		available := new(big.Int).Set(balance.ToBig())
 		if args.Value != nil {
 			if args.Value.ToInt().Cmp(available) >= 0 {
 				return 0, nil, errors.New("insufficient funds for transfer")
@@ -1357,7 +1358,7 @@ func DoEstimateGasWithState(ctx context.Context, b Backend, args TransactionArgs
 		if failed {
 			if result != nil && result.Err != vm.ErrOutOfGas {
 				if len(result.Revert()) > 0 {
-					return 0, nil, newRevertError(result)
+					return 0, nil, newRevertError(result.Revert())
 				}
 				return 0, nil, result.Err
 			}
