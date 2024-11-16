@@ -830,12 +830,12 @@ func (api *BlockChainAPI) GetHeaderByHash(ctx context.Context, hash common.Hash)
 	return nil
 }
 
-func (s *BlockChainAPI) GetBlockAndReceiptsByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
-	block, err := s.b.BlockByNumber(ctx, number)
-	receipts, err := s.b.GetReceipts(ctx, block.Hash())
+func (api *BlockChainAPI) GetBlockAndReceiptsByNumber(ctx context.Context, number rpc.BlockNumber, fullTx bool) (map[string]interface{}, error) {
+	block, err := api.b.BlockByNumber(ctx, number)
+	receipts, err := api.b.GetReceipts(ctx, block.Hash())
 	if block != nil && err == nil {
-		response, err := s.rpcMarshalBlock(ctx, block, true, fullTx)
-		if err == nil && number == rpc.PendingBlockNumber {
+		response := RPCMarshalBlock(block, true, fullTx, api.b.ChainConfig())
+		if number == rpc.PendingBlockNumber {
 			// Pending blocks need to nil out a few fields
 			for _, field := range []string{"hash", "nonce", "miner"} {
 				response[field] = nil
@@ -1105,7 +1105,7 @@ func DoCallWithState(ctx context.Context, b Backend, args TransactionArgs, prevS
 	defer cancel()
 
 	// Get a new instance of the EVM.
-	msg := args.ToMessage(prevState.header.BaseFee)
+	msg := args.ToMessage(prevState.header.BaseFee, true, true)
 	blockCtx := core.NewEVMBlockContext(prevState.header, NewChainContext(ctx, b), nil)
 
 	evm := b.GetEVM(ctx, msg, prevState.state, prevState.header, &vm.Config{NoBaseFee: true}, &blockCtx)
