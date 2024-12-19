@@ -109,13 +109,13 @@ func (s *Service) loop(chainHeadCh chan core.ChainHeadEvent) {
 		for {
 			select {
 			case head := <-chainHeadCh:
-				s.maxblock = head.Block.Number()
+				s.maxblock = head.Header.Number
 				if !s.syncing {
 					go s.startSyncing()
 				} else {
-					s.syncOneBlock(head.Block.Number().Int64())
+					s.syncOneBlock(head.Header.Number.Int64())
 				}
-				fmt.Printf("%s \n", head.Block.Number())
+				fmt.Printf("%s \n", head.Header.Number)
 			case <-s.headSub.Err():
 				break HandleLoop
 			}
