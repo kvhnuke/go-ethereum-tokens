@@ -30,9 +30,27 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethdb"
 	"github.com/ethereum/go-ethereum/log"
+	"github.com/ethereum/go-ethereum/metrics"
+)
+
+var (
+	mapCountGauge           = metrics.NewRegisteredGauge("filtermaps/maps/count", nil)          // actual number of rendered maps
+	mapLogValueMeter        = metrics.NewRegisteredMeter("filtermaps/maps/logvalues", nil)      // number of log values processed
+	mapBlockMeter           = metrics.NewRegisteredMeter("filtermaps/maps/blocks", nil)         // number of block delimiters processed
+	mapRenderTimer          = metrics.NewRegisteredTimer("filtermaps/maps/rendertime", nil)     // time elapsed while rendering a single map
+	mapWriteTimer           = metrics.NewRegisteredTimer("filtermaps/maps/writetime", nil)      // time elapsed while writing a batch of finished maps to db
+	matchRequestTimer       = metrics.NewRegisteredTimer("filtermaps/match/requesttime", nil)   // processing time a matching request in a single epoch
+	matchEpochTimer         = metrics.NewRegisteredTimer("filtermaps/match/epochtime", nil)     // total processing time a matching request
+	matchBaseRowAccessMeter = metrics.NewRegisteredMeter("filtermaps/match/baserowaccess", nil) // number of accessed rows on layer 0
+	matchBaseRowSizeMeter   = metrics.NewRegisteredMeter("filtermaps/match/baserowsize", nil)   // size of accessed rows on layer 0
+	matchExtRowAccessMeter  = metrics.NewRegisteredMeter("filtermaps/match/extrowaccess", nil)  // number of accessed rows on higher layers
+	matchExtRowSizeMeter    = metrics.NewRegisteredMeter("filtermaps/match/extrowsize", nil)    // size of accessed rows on higher layers
+	matchLogLookup          = metrics.NewRegisteredMeter("filtermaps/match/loglookup", nil)     // number of log lookups based on potential matches
+	matchAllMeter           = metrics.NewRegisteredMeter("filtermaps/match/matchall", nil)      // number of requests returned with ErrMatchAll
 )
 
 const (
+	databaseVersion       = 1    // reindexed if database version does not match
 	cachedLastBlocks      = 1000 // last block of map pointers
 	cachedLvPointers      = 1000 // first log value pointer of block pointers
 	cachedBaseRows        = 100  // groups of base layer filter row data
@@ -110,6 +128,7 @@ type FilterMaps struct {
 
 	// test hooks
 	testDisableSnapshots, testSnapshotUsed bool
+	testProcessEventsHook                  func()
 }
 
 // filterMap is a full or partial in-memory representation of a filter map where
@@ -121,13 +140,25 @@ type FilterMaps struct {
 // as transparent (uncached/unchanged).
 type filterMap []FilterRow
 
-// copy returns a copy of the given filter map. Note that the row slices are
-// copied but their contents are not. This permits extending the rows further
+// fastCopy returns a copy of the given filter map. Note that the row slices are
+// copied but their contents are not. This permits appending to the rows further
 // (which happens during map rendering) without affecting the validity of
 // copies made for snapshots during rendering.
-func (fm filterMap) copy() filterMap {
+// Appending to the rows of both the original map and the fast copy, or two fast
+// copies of the same map would result in data corruption, therefore a fast copy
+// should always be used in a read only way.
+func (fm filterMap) fastCopy() filterMap {
+	return slices.Clone(fm)
+}
+
+// fullCopy returns a copy of the given filter map, also making a copy of each
+// individual filter row, ensuring that a modification to either one will never
+// affect the other.
+func (fm filterMap) fullCopy() filterMap {
 	c := make(filterMap, len(fm))
-	copy(c, fm)
+	for i, row := range fm {
+		c[i] = slices.Clone(row)
+	}
 	return c
 }
 
@@ -190,8 +221,9 @@ type Config struct {
 // NewFilterMaps creates a new FilterMaps and starts the indexer.
 func NewFilterMaps(db ethdb.KeyValueStore, initView *ChainView, historyCutoff, finalBlock uint64, params Params, config Config) *FilterMaps {
 	rs, initialized, err := rawdb.ReadFilterMapsRange(db)
-	if err != nil {
-		log.Error("Error reading log index range", "error", err)
+	if err != nil || rs.Version != databaseVersion {
+		rs, initialized = rawdb.FilterMapsRange{}, false
+		log.Warn("Invalid log index database version; resetting log index")
 	}
 	params.deriveFields()
 	f := &FilterMaps{
@@ -231,7 +263,7 @@ func NewFilterMaps(db ethdb.KeyValueStore, initView *ChainView, historyCutoff, f
 	f.targetView = initView
 	if f.indexedRange.initialized {
 		f.indexedView = f.initChainView(f.targetView)
-		f.indexedRange.headIndexed = f.indexedRange.blocks.AfterLast() == f.indexedView.headNumber+1
+		f.indexedRange.headIndexed = f.indexedRange.blocks.AfterLast() == f.indexedView.HeadNumber()+1
 		if !f.indexedRange.headIndexed {
 			f.indexedRange.headDelimiter = 0
 		}
@@ -282,7 +314,7 @@ func (f *FilterMaps) initChainView(chainView *ChainView) *ChainView {
 			log.Error("Could not initialize indexed chain view", "error", err)
 			break
 		}
-		if lastBlockNumber <= chainView.headNumber && chainView.getBlockId(lastBlockNumber) == lastBlockId {
+		if lastBlockNumber <= chainView.HeadNumber() && chainView.BlockId(lastBlockNumber) == lastBlockId {
 			return chainView.limitedView(lastBlockNumber)
 		}
 	}
@@ -339,7 +371,7 @@ func (f *FilterMaps) init() error {
 		for min < max {
 			mid := (min + max + 1) / 2
 			cp := checkpointList[mid-1]
-			if cp.BlockNumber <= f.targetView.headNumber && f.targetView.getBlockId(cp.BlockNumber) == cp.BlockId {
+			if cp.BlockNumber <= f.targetView.HeadNumber() && f.targetView.BlockId(cp.BlockNumber) == cp.BlockId {
 				min = mid
 			} else {
 				max = mid - 1
@@ -420,6 +452,7 @@ func (f *FilterMaps) setRange(batch ethdb.KeyValueWriter, newView *ChainView, ne
 	f.updateMatchersValidRange()
 	if newRange.initialized {
 		rs := rawdb.FilterMapsRange{
+			Version:          databaseVersion,
 			HeadIndexed:      newRange.headIndexed,
 			HeadDelimiter:    newRange.headDelimiter,
 			BlocksFirst:      newRange.blocks.First(),
@@ -429,8 +462,12 @@ func (f *FilterMaps) setRange(batch ethdb.KeyValueWriter, newView *ChainView, ne
 			TailPartialEpoch: newRange.tailPartialEpoch,
 		}
 		rawdb.WriteFilterMapsRange(batch, rs)
+		if !isTempRange {
+			mapCountGauge.Update(int64(newRange.maps.Count() + newRange.tailPartialEpoch))
+		}
 	} else {
 		rawdb.DeleteFilterMapsRange(batch)
+		mapCountGauge.Update(0)
 	}
 }
 
@@ -476,7 +513,7 @@ func (f *FilterMaps) getLogByLvIndex(lvIndex uint64) (*types.Log, error) {
 		}
 	}
 	// get block receipts
-	receipts := f.indexedView.getReceipts(firstBlockNumber)
+	receipts := f.indexedView.Receipts(firstBlockNumber)
 	if receipts == nil {
 		return nil, fmt.Errorf("failed to retrieve receipts for block %d containing searched log value index %d: %v", firstBlockNumber, lvIndex, err)
 	}
@@ -537,7 +574,7 @@ func (f *FilterMaps) getFilterMapRow(mapIndex, rowIndex uint32, baseLayerOnly bo
 		}
 		f.baseRowsCache.Add(baseMapRowIndex, baseRows)
 	}
-	baseRow := baseRows[mapIndex&(f.baseRowGroupLength-1)]
+	baseRow := slices.Clone(baseRows[mapIndex&(f.baseRowGroupLength-1)])
 	if baseLayerOnly {
 		return baseRow, nil
 	}
@@ -574,7 +611,9 @@ func (f *FilterMaps) storeFilterMapRowsOfGroup(batch ethdb.Batch, mapIndices []u
 	if uint32(len(mapIndices)) != f.baseRowGroupLength { // skip base rows read if all rows are replaced
 		var ok bool
 		baseRows, ok = f.baseRowsCache.Get(baseMapRowIndex)
-		if !ok {
+		if ok {
+			baseRows = slices.Clone(baseRows)
+		} else {
 			var err error
 			baseRows, err = rawdb.ReadFilterMapBaseRows(f.db, baseMapRowIndex, f.baseRowGroupLength, f.logMapWidth)
 			if err != nil {
@@ -620,7 +659,7 @@ func (f *FilterMaps) mapRowIndex(mapIndex, rowIndex uint32) uint64 {
 // called from outside the indexerLoop goroutine.
 func (f *FilterMaps) getBlockLvPointer(blockNumber uint64) (uint64, error) {
 	if blockNumber >= f.indexedRange.blocks.AfterLast() && f.indexedRange.headIndexed {
-		return f.indexedRange.headDelimiter, nil
+		return f.indexedRange.headDelimiter + 1, nil
 	}
 	if lvPointer, ok := f.lvPointerCache.Get(blockNumber); ok {
 		return lvPointer, nil
