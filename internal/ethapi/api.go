@@ -1484,6 +1484,7 @@ func (s *BlockChainAPI) GetTokenInfo(ctx context.Context, contractAddress common
 func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Address) ([]AccountTokenBalanceResult, error) {
 	// Try to return an already finalized transaction
 	db := rawdb.NewTable(s.b.ChainDb(), rawdb.TokenBalancePrefix)
+	batchDb := db.NewBatch()
 	var contracts []common.Address
 	var response []AccountTokenBalanceResult
 	accountBalance, _ := s.GetBalance(ctx, address, rpc.BlockNumberOrHashWithNumber(rpc.PendingBlockNumber))
@@ -1492,7 +1493,7 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 	iter, idx := db.NewIterator(address.Bytes(), nil), 0
 	for iter.Next() {
 		if len(iter.Value()) > 20 {
-			db.Delete(iter.Key())
+			batchDb.Delete(iter.Key())
 		} else {
 			contracts = append(contracts, common.BytesToAddress(iter.Value()))
 		}
@@ -1519,16 +1520,16 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 			if balance.Cmp(common.Big0) != 0 {
 				response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
 			} else {
-				db.Delete(append(address.Bytes(), contract.Bytes()...))
+				batchDb.Delete(append(address.Bytes(), contract.Bytes()...))
 			}
 		} else {
-			db.Delete(append(address.Bytes(), contract.Bytes()...))
+			batchDb.Delete(append(address.Bytes(), contract.Bytes()...))
 		}
 		if err != nil {
 			fmt.Printf("%s\n", err)
 		}
 	}
-
+	batchDb.Write()
 	return response, nil
 
 }
