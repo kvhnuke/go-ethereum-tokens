@@ -1513,19 +1513,20 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 			To:   &contract,
 			Data: &balanceCallHex,
 		}, bNrOrHash, nil, nil, 5*time.Second, s.b.RPCGasCap())
-		if len(result.Return()) > 0 {
-			ret, _ := balanceOf.Outputs.Unpack(result.Return())
-			balance := ret[0].(*big.Int)
-			if balance.Cmp(common.Big0) != 0 {
-				response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
+		if err != nil {
+			fmt.Printf("%s\n", err)
+		} else {
+			if len(result.Return()) > 0 {
+				ret, _ := balanceOf.Outputs.Unpack(result.Return())
+				balance := ret[0].(*big.Int)
+				if balance.Cmp(common.Big0) != 0 {
+					response = append(response, AccountTokenBalanceResult{Contract: contract, Balance: hexutil.EncodeBig(balance)})
+				} else {
+					batchDb.Delete(append(address.Bytes(), contract.Bytes()...))
+				}
 			} else {
 				batchDb.Delete(append(address.Bytes(), contract.Bytes()...))
 			}
-		} else {
-			batchDb.Delete(append(address.Bytes(), contract.Bytes()...))
-		}
-		if err != nil {
-			fmt.Printf("%s\n", err)
 		}
 	}
 	fmt.Printf("contracts length %d \n", len(response))
