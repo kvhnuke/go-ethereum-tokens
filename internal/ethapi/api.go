@@ -1502,7 +1502,6 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 			break
 		}
 	}
-	fmt.Printf("contracts length %d \n", idx)
 	Address, _ := abi.NewType("address", "", nil)
 	Uint256, _ := abi.NewType("uint256", "", nil)
 	balanceOf := abi.NewMethod("balanceOf", "balanceOf", abi.Function, "", true, false, []abi.Argument{{"owner", Address, false}}, []abi.Argument{{"balance", Uint256, false}})
@@ -1529,6 +1528,7 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 			fmt.Printf("%s\n", err)
 		}
 	}
+	fmt.Printf("contracts length %d \n", len(response))
 	batchDb.Write()
 	return response, nil
 
