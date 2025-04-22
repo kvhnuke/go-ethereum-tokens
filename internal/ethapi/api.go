@@ -1498,7 +1498,7 @@ func (s *BlockChainAPI) GetAccountTokens(ctx context.Context, address common.Add
 			contracts = append(contracts, common.BytesToAddress(iter.Value()))
 		}
 		idx++
-		if idx > 10000 {
+		if idx > 1000 {
 			break
 		}
 	}
