@@ -95,19 +95,20 @@ func (ec *engineClient) updateLoop(headCh <-chan types.ChainHeadEvent) {
 func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) (string, error) {
 	execData := engine.BlockToExecutableData(event.Block, nil, nil, nil).ExecutionPayload
 
+	var ExecRequests []string
+
 	var (
-		method       string
-		params       = []any{execData}
-		ExecRequests = []common.PrettyBytes{}
+		method string
+		params = []any{execData}
 	)
 	switch fork {
 	case "electra":
-		for _, req := range event.ExecRequests {
-			ExecRequests = append(ExecRequests, common.PrettyBytes(req))
-		}
 		method = "engine_newPayloadV4"
 		parentBeaconRoot := event.BeaconHead.ParentRoot
 		blobHashes := collectBlobHashes(event.Block)
+		for _, req := range event.ExecRequests {
+			ExecRequests = append(ExecRequests, common.Bytes2Hex(req))
+		}
 		params = append(params, blobHashes, parentBeaconRoot, ExecRequests)
 	case "deneb":
 		method = "engine_newPayloadV3"
