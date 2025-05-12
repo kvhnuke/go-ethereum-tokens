@@ -340,7 +340,6 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
 	}
 	msg, err := c.newMessage(method, args...)
-	fmt.Errorf("hereerererer: %v", err)
 	if err != nil {
 		return err
 	}
@@ -355,6 +354,7 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 		err = c.send(ctx, op, msg)
 	}
 	if err != nil {
+		fmt.Errorf("hereerererer: %v", err)
 		return err
 	}
 
