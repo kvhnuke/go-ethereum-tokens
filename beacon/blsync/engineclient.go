@@ -79,7 +79,7 @@ func (ec *engineClient) updateLoop(headCh <-chan types.ChainHeadEvent) {
 			if status, err := ec.callNewPayload(forkName, event); err == nil {
 				log.Info("Successful NewPayload", "number", event.Block.NumberU64(), "hash", event.Block.Hash(), "status", status)
 			} else {
-				log.Error("Failed NewPayload", "number", event.Block.NumberU64(), "hash", event.Block.Hash(), "error", err)
+				log.Error("Failed1 NewPayload", "number", event.Block.NumberU64(), "hash", event.Block.Hash(), "error", event)
 			}
 
 			log.Debug("Calling ForkchoiceUpdated", "head", event.Block.Hash())
