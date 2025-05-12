@@ -107,7 +107,7 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 		parentBeaconRoot := event.BeaconHead.ParentRoot
 		blobHashes := collectBlobHashes(event.Block)
 		for _, req := range event.ExecRequests {
-			ExecRequests = append(ExecRequests, common.Bytes2Hex(req))
+			ExecRequests = append(ExecRequests, "0x"+common.Bytes2Hex(req))
 		}
 		params = append(params, blobHashes, parentBeaconRoot, ExecRequests)
 	case "deneb":
