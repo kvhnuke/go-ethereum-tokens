@@ -96,8 +96,9 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 	execData := engine.BlockToExecutableData(event.Block, nil, nil, nil).ExecutionPayload
 
 	var (
-		method string
-		params = []any{execData}
+		method       string
+		params       = []any{execData}
+		execRequests = []common.Hash
 	)
 	switch fork {
 	case "electra":
@@ -120,7 +121,7 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 	defer cancel()
 	var resp engine.PayloadStatusV1
 	err := ec.rpc.CallContext(ctx, &resp, method, params...)
-	log.Error("Failed ForkchoiceUpdated", method, params)
+	log.Error("Failed ForkchoiceUpdated", method, params, "error", err)
 	return resp.Status, err
 }
 

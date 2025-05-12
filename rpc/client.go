@@ -350,10 +350,10 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 
 	if c.isHTTP {
 		err = c.sendHTTP(ctx, op, msg)
-		fmt.Printf("did 1")
 	} else {
+		fmt.Printf("op: %v\n", op)
+		fmt.Printf("msg: %v\n", msg)
 		err = c.send(ctx, op, msg)
-		fmt.Printf("did 2")
 	}
 	if err != nil {
 		return err
@@ -361,27 +361,19 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 
 	// dispatch has accepted the request and will close the channel when it quits.
 	batchresp, err := op.wait(ctx, c)
-	fmt.Printf("here: 5\n")
 	if err != nil {
 		return err
 	}
-	fmt.Printf("here: 6\n")
 	resp := batchresp[0]
 	switch {
 	case resp.Error != nil:
-		fmt.Printf("here: 7\n")
 		return resp.Error
 	case len(resp.Result) == 0:
-		fmt.Printf("here: 8\n")
 		return ErrNoResult
 	default:
-		fmt.Printf("here: 9\n")
 		if result == nil {
 			return nil
 		}
-		fmt.Printf("here: 10\n")
-		err := json.Unmarshal(resp.Result, result)
-		fmt.Printf("here: %v %v\n", result, err)
 		return json.Unmarshal(resp.Result, result)
 	}
 }
