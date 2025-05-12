@@ -109,6 +109,9 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 		for _, req := range event.ExecRequests {
 			ExecRequests = append(ExecRequests, "0x"+common.Bytes2Hex(req))
 		}
+		if len(ExecRequests) == 0 {
+			ExecRequests = make([]string, 0)
+		}
 		params = append(params, blobHashes, parentBeaconRoot, ExecRequests)
 	case "deneb":
 		method = "engine_newPayloadV3"
