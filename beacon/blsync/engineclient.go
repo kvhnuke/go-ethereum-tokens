@@ -95,7 +95,7 @@ func (ec *engineClient) updateLoop(headCh <-chan types.ChainHeadEvent) {
 func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) (string, error) {
 	execData := engine.BlockToExecutableData(event.Block, nil, nil, nil).ExecutionPayload
 
-	var ExecRequests []string
+	var ExecRequests = make([]string, len(event.ExecRequests))
 
 	var (
 		method string
