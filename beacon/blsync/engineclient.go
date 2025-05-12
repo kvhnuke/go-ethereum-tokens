@@ -96,9 +96,8 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 	execData := engine.BlockToExecutableData(event.Block, nil, nil, nil).ExecutionPayload
 
 	var (
-		method       string
-		params       = []any{execData}
-		execRequests = []common.Hash
+		method string
+		params = []any{execData}
 	)
 	switch fork {
 	case "electra":
