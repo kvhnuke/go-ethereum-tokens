@@ -336,48 +336,40 @@ func (c *Client) Call(result interface{}, method string, args ...interface{}) er
 // The result must be a pointer so that package json can unmarshal into it. You
 // can also pass nil, in which case the result is ignored.
 func (c *Client) CallContext(ctx context.Context, result interface{}, method string, args ...interface{}) error {
-	fmt.Printf("hereerererer1")
 	if result != nil && reflect.TypeOf(result).Kind() != reflect.Ptr {
 		return fmt.Errorf("call result parameter must be pointer or nil interface: %v", result)
 	}
-	fmt.Printf("hereerererer2")
 	msg, err := c.newMessage(method, args...)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("hereerererer3")
 	op := &requestOp{
 		ids:  []json.RawMessage{msg.ID},
 		resp: make(chan []*jsonrpcMessage, 1),
 	}
-	fmt.Printf("hereerererer4")
+
 	if c.isHTTP {
 		err = c.sendHTTP(ctx, op, msg)
 	} else {
 		err = c.send(ctx, op, msg)
 	}
 	if err != nil {
-		fmt.Errorf("hereerererer: %v", err)
 		return err
 	}
-	fmt.Printf("hereerererer5")
 
 	// dispatch has accepted the request and will close the channel when it quits.
 	batchresp, err := op.wait(ctx, c)
+	fmt.Errorf("here: %v", err)
 	if err != nil {
 		return err
 	}
-	fmt.Printf("hereerererer6")
 	resp := batchresp[0]
 	switch {
 	case resp.Error != nil:
-		fmt.Printf("hereerererer9")
 		return resp.Error
 	case len(resp.Result) == 0:
-		fmt.Printf("hereerererer8")
 		return ErrNoResult
 	default:
-		fmt.Printf("hereerererer7")
 		if result == nil {
 			return nil
 		}
