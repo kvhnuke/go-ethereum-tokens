@@ -380,6 +380,8 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 			return nil
 		}
 		fmt.Printf("here: 10\n")
+		err := json.Unmarshal(resp.Result, result)
+		fmt.Printf("here: %v %v\n", result, err)
 		return json.Unmarshal(resp.Result, result)
 	}
 }
