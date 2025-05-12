@@ -351,8 +351,6 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 	if c.isHTTP {
 		err = c.sendHTTP(ctx, op, msg)
 	} else {
-		fmt.Printf("op: %v\n", op)
-		fmt.Printf("msg: %v\n", msg)
 		err = c.send(ctx, op, msg)
 	}
 	if err != nil {
@@ -367,6 +365,8 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 	resp := batchresp[0]
 	switch {
 	case resp.Error != nil:
+		fmt.Printf("op: %v\n", op)
+		fmt.Printf("msg: %v\n", msg)
 		return resp.Error
 	case len(resp.Result) == 0:
 		return ErrNoResult
