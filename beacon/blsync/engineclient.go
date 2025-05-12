@@ -120,9 +120,7 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 	defer cancel()
 	var resp engine.PayloadStatusV1
 	err := ec.rpc.CallContext(ctx, &resp, method, params...)
-	if err != nil {
-		panic("a problem")
-	}
+	log.Error("Failed ForkchoiceUpdated", method, params)
 	return resp.Status, err
 }
 
