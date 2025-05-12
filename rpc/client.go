@@ -350,8 +350,10 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 
 	if c.isHTTP {
 		err = c.sendHTTP(ctx, op, msg)
+		fmt.Printf("did 1")
 	} else {
 		err = c.send(ctx, op, msg)
+		fmt.Printf("did 2")
 	}
 	if err != nil {
 		return err
@@ -359,7 +361,7 @@ func (c *Client) CallContext(ctx context.Context, result interface{}, method str
 
 	// dispatch has accepted the request and will close the channel when it quits.
 	batchresp, err := op.wait(ctx, c)
-	fmt.Errorf("here: %v", err)
+	fmt.Printf("here: %v", err)
 	if err != nil {
 		return err
 	}
