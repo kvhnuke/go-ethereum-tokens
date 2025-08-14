@@ -26,6 +26,7 @@ import (
 	"github.com/ethereum/go-ethereum/beacon/params"
 	"github.com/ethereum/go-ethereum/beacon/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/common/hexutil"
 	ctypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/log"
 	"github.com/ethereum/go-ethereum/rpc"
@@ -95,8 +96,6 @@ func (ec *engineClient) updateLoop(headCh <-chan types.ChainHeadEvent) {
 func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) (string, error) {
 	execData := engine.BlockToExecutableData(event.Block, nil, nil, nil).ExecutionPayload
 
-	var ExecRequests []string
-
 	var (
 		method string
 		params = []any{execData}
@@ -106,13 +105,11 @@ func (ec *engineClient) callNewPayload(fork string, event types.ChainHeadEvent) 
 		method = "engine_newPayloadV4"
 		parentBeaconRoot := event.BeaconHead.ParentRoot
 		blobHashes := collectBlobHashes(event.Block)
-		for _, req := range event.ExecRequests {
-			ExecRequests = append(ExecRequests, "0x"+common.Bytes2Hex(req))
+		hexRequests := make([]hexutil.Bytes, len(event.ExecRequests))
+		for i := range event.ExecRequests {
+			hexRequests[i] = hexutil.Bytes(event.ExecRequests[i])
 		}
-		if len(ExecRequests) == 0 {
-			ExecRequests = make([]string, 0)
-		}
-		params = append(params, blobHashes, parentBeaconRoot, ExecRequests)
+		params = append(params, blobHashes, parentBeaconRoot, hexRequests)
 	case "deneb":
 		method = "engine_newPayloadV3"
 		parentBeaconRoot := event.BeaconHead.ParentRoot
