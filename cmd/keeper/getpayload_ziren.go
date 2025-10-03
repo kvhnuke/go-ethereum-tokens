@@ -1,4 +1,4 @@
-// Copyright 2021 The go-ethereum Authors
+// Copyright 2025 The go-ethereum Authors
 // This file is part of the go-ethereum library.
 //
 // The go-ethereum library is free software: you can redistribute it and/or modify
@@ -14,14 +14,18 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-//go:build nacl || js || !cgo
-// +build nacl js !cgo
+//go:build ziren
 
-package rlp
+package main
 
-import "reflect"
+import (
+	zkruntime "github.com/zkMIPS/zkMIPS/crates/go-runtime/zkm_runtime"
+)
 
-// byteArrayBytes returns a slice of the byte array v.
-func byteArrayBytes(v reflect.Value, length int) []byte {
-	return v.Slice(0, length).Bytes()
+// getInput reads the input payload from the zkVM runtime environment.
+// The zkVM host provides the RLP-encoded Payload structure containing
+// the block and witness data through the runtime's input mechanism.
+func getInput() []byte {
+	input := zkruntime.Read[[]byte]()
+	return input
 }
